@@ -1,4 +1,5 @@
 import os
+import re
 from unittest.mock import patch
 
 import pytest
@@ -15,12 +16,62 @@ def test_cli_help(runner):
     result = runner.invoke(main, ['--help'])
     assert result.exit_code == 0
     assert "JugaadLang" in result.output
+    assert "Examples:" in result.output
+    assert "jug run <file.jug>" in result.output
+    assert "jug compile <file.jug>" in result.output
+    assert "jug repl" in result.output
+    assert "jug install <package>" in result.output
+    assert "jug search <query>" in result.output
+    assert "jug doctor" in result.output
+    # Check that short help for install is cleanly displayed without truncation
+    assert "Install a package or custom bundle." in result.output
+
+
+def test_cli_help_short_flag(runner):
+    result = runner.invoke(main, ['-h'])
+    assert result.exit_code == 0
+    assert "JugaadLang" in result.output
+    assert "Examples:" in result.output
+
+
+def test_cli_subcommand_help_examples(runner):
+    for cmd, expected_example in [
+        ('run', 'jug run hello.jug'),
+        ('compile', 'jug compile hello.jug'),
+        ('repl', 'jug repl'),
+        ('install', 'jug install chai'),
+        ('remove', 'jug remove chai'),
+        ('update', 'jug update chai'),
+        ('search', 'jug search chai'),
+        ('new', 'jug new my_project'),
+        ('check', 'jug check hello.jug'),
+        ('typecheck', 'jug typecheck hello.jug'),
+        ('doctor', 'jug doctor'),
+    ]:
+        result = runner.invoke(main, [cmd, '--help'])
+        assert result.exit_code == 0
+        assert "Examples:" in result.output
+        assert expected_example in result.output
 
 def test_cli_run(runner, tmp_path):
     jug_file = tmp_path / "hello.jug"
     jug_file.write_text("bolo('namaste')", encoding="utf-8")
     result = runner.invoke(main, ['run', str(jug_file)])
     assert result.exit_code == 0
+
+def test_cli_run_utf8_bom_file(runner, tmp_path):
+    jug_file = tmp_path / "bom.jug"
+    jug_file.write_text("bolo('namaste')", encoding="utf-8-sig")
+    result = runner.invoke(main, ['run', str(jug_file)])
+    assert result.exit_code == 0
+    assert "namaste" in result.output
+
+def test_cli_check_utf8_bom_file(runner, tmp_path):
+    jug_file = tmp_path / "bom.jug"
+    jug_file.write_text("bolo('namaste')", encoding="utf-8-sig")
+    result = runner.invoke(main, ['check', str(jug_file)])
+    assert result.exit_code == 0
+    assert "sahi hai" in result.output
 
 def test_cli_run_non_existent(runner):
     result = runner.invoke(main, ['run', 'does_not_exist.jug'])
@@ -53,7 +104,40 @@ def test_cli_check_invalid(runner, tmp_path):
     jug_file = tmp_path / "hello.jug"
     jug_file.write_text("bolo('namaste'", encoding="utf-8")  # missing paren
     result = runner.invoke(main, ['check', str(jug_file)])
-    assert result.exit_code != 0
+    output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert result.exit_code == 1
+    assert "ParseError" in output
+    assert "Line 1" in output
+    assert "bolo('namaste'" in output
+    assert "after call arguments" in output
+
+
+def test_cli_check_uncompilable(runner, tmp_path):
+    # 'rukja' (break outside loop) parses but cannot be compiled
+    bad_break = tmp_path / "bad_break.jug"
+    bad_break.write_text("rukja\n", encoding="utf-8")
+    result = runner.invoke(main, ['check', str(bad_break)])
+    assert result.exit_code == 1
+    assert "break" in result.output
+
+    # 'wapas' (return outside function)
+    bad_return = tmp_path / "bad_return.jug"
+    bad_return.write_text("wapas 10\n", encoding="utf-8")
+    result = runner.invoke(main, ['check', str(bad_return)])
+    assert result.exit_code == 1
+    assert "return" in result.output
+
+    # '1 = 2' (assignment to literal)
+    bad_assign = tmp_path / "bad_assign.jug"
+    bad_assign.write_text("1 = 2\n", encoding="utf-8")
+    result = runner.invoke(main, ['check', str(bad_assign)])
+    assert result.exit_code == 1
+
+    # try without except/finally
+    bad_try = tmp_path / "bad_try.jug"
+    bad_try.write_text("koshish:\n    bolo('hi')\n", encoding="utf-8")
+    result = runner.invoke(main, ['check', str(bad_try)])
+    assert result.exit_code == 1
 
 def test_cli_new(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -105,3 +189,11 @@ def test_cli_repl(mock_repl, runner):
     result = runner.invoke(main, ['repl'])
     assert result.exit_code == 0
     mock_repl.assert_called_once()
+
+
+def test_cli_version():
+    runner = CliRunner()
+    result = runner.invoke(main, ["--version"])
+
+    assert result.exit_code == 0
+    assert "JugaadLang v" in result.output

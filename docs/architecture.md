@@ -2,7 +2,7 @@
 
 ## Overview
 
-JugaadLang is a Hindi-keyword programming language that transpiles directly to Python AST (Abstract Syntax Tree). This means JugaadLang code is compiled to Python's internal AST representation and executed by the Python VM with **zero runtime overhead**.
+JugaadLang is a Hindi-keyword programming language that transforms its own syntax tree into Python AST (Abstract Syntax Tree), compiles it to bytecode, and executes it on the Python VM. Parsing, transformation, and runtime helpers have costs; this is not a zero-overhead guarantee. The runtime caches generated Python source to reuse it on subsequent executions.
 
 ### Pipeline
 
@@ -119,7 +119,8 @@ The lexer tokenizes raw source code into a stream of `Token` objects. Key featur
 
 - **Indentation tracking**: Implements Python-style INDENT/DEDENT tokens using a stack-based approach
 - **Multi-line comments**: Supports `#`, `//`, and `/* */` comment styles
-- **String literals**: Single, double, triple-quoted, and f-strings
+- **String literals**: Single, double, triple-quoted, f-strings, and t-strings (PEP 750); raw `r"..."` prefixes are rejected with a clear error
+- **Imports**: `lao`/`se ... lao`, plus contextual `sust` for lazy imports (PEP 810, Python 3.15+)
 - **Number literals**: Decimal, hex (`0x`), octal (`0o`), binary (`0b`), floats with exponents
 - **Unicode identifiers**: Full Unicode + emoji support in identifiers
 
